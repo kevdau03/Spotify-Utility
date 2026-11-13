@@ -1,0 +1,10 @@
+{
+  "name": "spotify-utility",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Personal CLI: export your Spotify liked songs, let an LLM plan playlists, create them from the CLI.",
+  "type": "module",
+  "bin": { "spotify": "bin/spotify.js" },
+  "engines": { "node": ">=20" },
+  "scripts": { "test": "node --test test/*.test.js" }
+}

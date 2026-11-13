@@ -1,0 +1,10 @@
+node_modules/
+.env
+*.local
+tokens.json
+# exports contain your personal library data
+likes.json
+likes.txt
+likes.csv
+exports/
+plan.json
