@@ -74,11 +74,17 @@ export async function login({ noOpen = false } = {}) {
       const u = new URL(req.url, cfg.redirectUri);
       if (u.pathname !== redirect.pathname) { res.writeHead(404).end(); return; }
       const err = u.searchParams.get('error');
-      const ok = !err && u.searchParams.get('state') === state && u.searchParams.get('code');
+      if (u.searchParams.get('state') !== state) {
+        // Stray or forged request from another local process: ignore it rather than abort the real login.
+        res.writeHead(400, { 'Content-Type': 'text/plain' }).end('Invalid state');
+        return;
+      }
+      const code = u.searchParams.get('code');
+      const ok = !err && code;
       res.writeHead(ok ? 200 : 400, { 'Content-Type': 'text/plain' });
-      res.end(ok ? 'Spotify login complete. You can close this tab.' : `Login failed: ${err || 'state mismatch'}`);
+      res.end(ok ? 'Spotify login complete. You can close this tab.' : 'Login failed. Check the terminal.');
       server.close();
-      ok ? resolve(u.searchParams.get('code')) : reject(new Error(`Login failed: ${err || 'state mismatch'}`));
+      ok ? resolve(code) : reject(new Error(`Login failed: ${err || 'no code returned'}`));
     });
     server.on('error', reject);
     server.listen(Number(redirect.port) || 80, redirect.hostname, () => {

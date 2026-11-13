@@ -47,7 +47,7 @@ function readUris(file) {
 }
 
 function emit(text, output) {
-  if (output) { fs.writeFileSync(output, text); log(`Wrote ${output}`); }
+  if (output) { fs.writeFileSync(output, text, { mode: 0o600 }); // personal library data log(`Wrote ${output}`); }
   else process.stdout.write(text);
 }
 

@@ -5,6 +5,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export async function api(path, { method = 'GET', body, query } = {}, retries = 5) {
   const url = path.startsWith('http') ? path : BASE + path + (query ? '?' + new URLSearchParams(query) : '');
+  // Pagination follows server-supplied `next` URLs; never send the bearer token anywhere but Spotify's API.
+  if (new URL(url).origin !== 'https://api.spotify.com') throw new Error(`Refusing to send credentials to ${new URL(url).origin}`);
   for (let attempt = 0; ; attempt++) {
     const token = await getAccessToken();
     const res = await fetch(url, {
@@ -13,7 +15,7 @@ export async function api(path, { method = 'GET', body, query } = {}, retries = 
       body: body ? JSON.stringify(body) : undefined,
     });
     if (res.status === 429 && attempt < retries) {
-      await sleep((Number(res.headers.get('retry-after')) || 1) * 1000 + 250);
+      await sleep(Math.min(Number(res.headers.get('retry-after')) || 1, 60) * 1000 + 250);
       continue;
     }
     if (res.status >= 500 && attempt < retries) { await sleep(500 * 2 ** attempt); continue; }

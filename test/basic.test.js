@@ -40,3 +40,16 @@ test('plan validation', () => {
 });
 
 test('chunk', () => assert.deepEqual(chunk([1, 2, 3], 2), [[1, 2], [3]]));
+
+test('api refuses to send token to non-Spotify origins', async () => {
+  const { api } = await import('../src/api.js');
+  await assert.rejects(api('https://evil.example/steal'), /Refusing to send credentials/);
+});
+
+test('redirect URI must be loopback', async () => {
+  const { getConfig } = await import('../src/config.js');
+  process.env.SPOTIFY_CLIENT_ID = 'x';
+  process.env.SPOTIFY_REDIRECT_URI = 'http://0.0.0.0:8888/callback';
+  assert.throws(() => getConfig(), /loopback/);
+  delete process.env.SPOTIFY_REDIRECT_URI;
+});
