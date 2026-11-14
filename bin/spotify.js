@@ -26,6 +26,9 @@ const HELP = `spotify - personal Spotify CLI
 
 Plan file (apply): [ { "name": "...", "description": "...", "uris": ["spotify:track:..."] } ]
 --uris accepts a JSON array of URIs, a JSON array of export objects, or one URI per line.
+
+A bare filename (no "/" or leading ".") for -o/--uris/--library/apply is read from or written to
+./work/ (gitignored). Pass a path containing "/" to use a different location.
 `;
 
 const opts = {
@@ -46,8 +49,17 @@ const opts = {
 
 const log = (...a) => console.error(...a); // keep stdout clean for piping
 
+// Bare filenames (no "/" or leading ".") land in gitignored work/ instead of the repo root,
+// so plan/uri/export files never get committed by accident. Paths with a directory are left as-is.
+const WORK_DIR = 'work';
+function resolveWorkPath(p) {
+  if (!p || p.includes('/') || p.includes(path.sep) || p.startsWith('.')) return p;
+  fs.mkdirSync(WORK_DIR, { recursive: true, mode: 0o700 });
+  return path.join(WORK_DIR, p);
+}
+
 function readUris(file) {
-  const raw = fs.readFileSync(file, 'utf8').trim();
+  const raw = fs.readFileSync(resolveWorkPath(file), 'utf8').trim();
   if (raw.startsWith('[')) {
     return JSON.parse(raw).map((x) => (typeof x === 'string' ? x : x.uri)).filter(Boolean);
   }
@@ -55,7 +67,7 @@ function readUris(file) {
 }
 
 function emit(text, output) {
-  if (output) { fs.writeFileSync(output, text, { mode: 0o600 }); log(`Wrote ${output}`); } // 0600: personal library data
+  if (output) { const file = resolveWorkPath(output); fs.writeFileSync(file, text, { mode: 0o600 }); log(`Wrote ${file}`); } // 0600: personal library data
   else process.stdout.write(text);
 }
 
@@ -138,7 +150,7 @@ async function main() {
     }
     case 'apply': {
       if (!sub) throw new Error('Usage: spotify apply plan.json');
-      const plan = JSON.parse(fs.readFileSync(sub, 'utf8'));
+      const plan = JSON.parse(fs.readFileSync(resolveWorkPath(sub), 'utf8'));
       const known = v.library ? new Set(readUris(v.library)) : null;
       const problems = validatePlan(plan, known);
       if (problems.length) throw new Error('Plan rejected:\n' + problems.join('\n'));

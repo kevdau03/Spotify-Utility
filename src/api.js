@@ -95,12 +95,11 @@ export async function addTracks(playlistId, uris) {
 
 export async function removeTracks(playlistId, uris) {
   for (const batch of chunk(uris, 100)) {
-    const tracks = batch.map((uri) => ({ uri }));
     try {
-      await api(`/playlists/${playlistId}/tracks`, { method: 'DELETE', body: { tracks } });
+      await api(`/playlists/${playlistId}/items`, { method: 'DELETE', body: { items: batch.map((uri) => ({ uri })) } });
     } catch (e) {
       if (e.status !== 404) throw e;
-      await api(`/playlists/${playlistId}/items`, { method: 'DELETE', body: { tracks } });
+      await api(`/playlists/${playlistId}/tracks`, { method: 'DELETE', body: { tracks: batch.map((uri) => ({ uri })) } });
     }
   }
 }

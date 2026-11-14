@@ -8,3 +8,5 @@ likes.txt
 likes.csv
 exports/
 plan.json
+# scratch files for one-off CLI commands (uri lists, etc.)
+work/
