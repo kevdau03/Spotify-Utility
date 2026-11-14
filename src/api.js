@@ -92,3 +92,14 @@ export async function addTracks(playlistId, uris) {
     }
   }
 }
+
+// Spotify's "delete playlist" is unfollow: it leaves your library, and can be restored from spotify.com/account/recover-playlists.
+export async function deletePlaylist(id) {
+  try {
+    await api(`/playlists/${id}/followers`, { method: 'DELETE' });
+  } catch (e) {
+    if (![404, 405, 410].includes(e.status)) throw e;
+    // Newer library endpoint (may need the user-library-modify scope: re-run `spotify login` after adding it).
+    await api('/me/library', { method: 'DELETE', query: { uris: `spotify:playlist:${id}` } });
+  }
+}

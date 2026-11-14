@@ -26,5 +26,5 @@ spotify apply plan.json --library likes.json
 `--library` rejects any URI not in your export, so a hallucinated track can't slip in.
 
 ## Commands
-See `spotify help`. The CLI only creates playlists and adds tracks; it never deletes or removes anything.
+See `spotify help`. `spotify delete <id|exact name>...` previews by default; `--yes` unfollows the playlist (Spotify's version of delete, restorable at spotify.com/account/recover-playlists) after saving a track backup to `~/.config/spotify-utility/trash/`. Ambiguous names are refused. Nothing else is ever removed, and tracks are never removed from your liked songs.
 Exports and `.env` are gitignored because they contain personal data.

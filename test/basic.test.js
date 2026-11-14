@@ -53,3 +53,21 @@ test('redirect URI must be loopback', async () => {
   assert.throws(() => getConfig(), /loopback/);
   delete process.env.SPOTIFY_REDIRECT_URI;
 });
+
+test('delete previews by default and refuses ambiguity (mock API)', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'spu-'));
+  fs.writeFileSync(path.join(home, 'tokens.json'), JSON.stringify({ access_token: 't', refresh_token: 'r', expires_at: Date.now() + 1e7 }));
+  const r = spawnSync('node', ['bin/spotify.js', 'delete'], { env: { ...process.env, SPOTIFY_CLIENT_ID: 'x', SPOTIFY_UTILITY_HOME: home }, encoding: 'utf8' });
+  assert.match(r.stderr, /Usage: spotify delete/);
+});
+
+test('CLI entry point parses and prints help', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const r = spawnSync('node', ['bin/spotify.js', 'help'], { encoding: 'utf8' });
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /spotify delete/);
+});

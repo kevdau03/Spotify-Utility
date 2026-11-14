@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import { parseArgs } from 'node:util';
 import { login, logout, loadTokens } from '../src/auth.js';
 import * as sp from '../src/api.js';
+import { getConfig } from '../src/config.js';
+import path from 'node:path';
 import { simplifyTrack, formatTracks, validatePlan } from '../src/format.js';
 
 const HELP = `spotify - personal Spotify CLI
@@ -18,6 +20,7 @@ const HELP = `spotify - personal Spotify CLI
   spotify create <name> --uris file.json [--description d] [--public] [--dry-run]
   spotify apply plan.json [--library likes.json] [--public] [--dry-run]
   spotify add <playlist-id> --uris file.json
+  spotify delete <id|exact name>... [--yes]   Preview by default; --yes to remove (backs up tracks first)
 
 Plan file (apply): [ { "name": "...", "description": "...", "uris": ["spotify:track:..."] } ]
 --uris accepts a JSON array of URIs, a JSON array of export objects, or one URI per line.
@@ -31,6 +34,7 @@ const opts = {
   library: { type: 'string' },
   description: { type: 'string', default: '' },
   public: { type: 'boolean', default: false },
+  yes: { type: 'boolean', default: false },
   'dry-run': { type: 'boolean', default: false },
   'no-open': { type: 'boolean', default: false },
   help: { type: 'boolean', short: 'h', default: false },
@@ -47,7 +51,7 @@ function readUris(file) {
 }
 
 function emit(text, output) {
-  if (output) { fs.writeFileSync(output, text, { mode: 0o600 }); // personal library data log(`Wrote ${output}`); }
+  if (output) { fs.writeFileSync(output, text, { mode: 0o600 }); log(`Wrote ${output}`); } // 0600: personal library data
   else process.stdout.write(text);
 }
 
@@ -128,6 +132,29 @@ async function main() {
       const problems = validatePlan(plan, known);
       if (problems.length) throw new Error('Plan rejected:\n' + problems.join('\n'));
       for (const p of plan) await createOne({ ...p, uris: [...new Set(p.uris)] }, { isPublic: v.public, dry: v['dry-run'] });
+      break;
+    }
+    case 'delete': {
+      const keys = [sub, ...rest].filter(Boolean);
+      if (!keys.length) throw new Error('Usage: spotify delete <id|exact name>... [--yes]');
+      const all = (await sp.getPlaylists()).filter(Boolean);
+      const targets = [];
+      for (const key of keys) {
+        const hits = all.filter((p) => p.id === key || p.name === key);
+        if (hits.length !== 1) throw new Error(hits.length ? `"${key}" matches ${hits.length} playlists; use the id (spotify playlists)` : `No playlist matching "${key}"`);
+        targets.push(hits[0]);
+      }
+      for (const p of targets) log(`${v.yes ? 'Deleting' : '[preview] would delete'} "${p.name}" (${p.id}, ${p.items?.total ?? p.tracks?.total ?? '?'} tracks)`);
+      if (!v.yes) return log('Nothing changed. Re-run with --yes to delete.');
+      const dir = path.join(getConfig().dir, 'trash');
+      fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+      for (const p of targets) {
+        const tracks = (await sp.getPlaylistTracks(p.id)).map((i) => simplifyTrack(i)).filter(Boolean);
+        const file = path.join(dir, `${p.id}-${Date.now()}.json`);
+        fs.writeFileSync(file, JSON.stringify({ name: p.name, description: p.description, tracks }, null, 1), { mode: 0o600 });
+        await sp.deletePlaylist(p.id);
+        log(`Deleted "${p.name}". Backup: ${file}`);
+      }
       break;
     }
     case 'add': {
