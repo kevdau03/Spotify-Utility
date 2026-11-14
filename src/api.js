@@ -93,6 +93,25 @@ export async function addTracks(playlistId, uris) {
   }
 }
 
+export async function removeTracks(playlistId, uris) {
+  for (const batch of chunk(uris, 100)) {
+    try {
+      await api(`/playlists/${playlistId}/items`, { method: 'DELETE', body: { items: batch.map((uri) => ({ uri })) } });
+    } catch (e) {
+      if (e.status !== 404) throw e;
+      await api(`/playlists/${playlistId}/tracks`, { method: 'DELETE', body: { tracks: batch.map((uri) => ({ uri })) } });
+    }
+  }
+}
+
+export function updatePlaylistDetails(id, { name, description, isPublic } = {}) {
+  const body = {};
+  if (name !== undefined) body.name = name;
+  if (description !== undefined) body.description = description;
+  if (isPublic !== undefined) body.public = isPublic;
+  return api(`/playlists/${id}`, { method: 'PUT', body });
+}
+
 // Spotify's "delete playlist" is unfollow: it leaves your library, and can be restored from spotify.com/account/recover-playlists.
 export async function deletePlaylist(id) {
   try {

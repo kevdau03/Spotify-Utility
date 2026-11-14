@@ -19,11 +19,16 @@ const HELP = `spotify - personal Spotify CLI
 
   spotify create <name> --uris file.json [--description d] [--public] [--dry-run]
   spotify apply plan.json [--library likes.json] [--public] [--dry-run]
-  spotify add <playlist-id> --uris file.json
+  spotify add <id|name> --uris file.json
+  spotify remove <id|name> --uris file.json
+  spotify edit <id|name> [--name "New name"] [--description d] [--public|--private]
   spotify delete <id|exact name>... [--yes]   Preview by default; --yes to remove (backs up tracks first)
 
 Plan file (apply): [ { "name": "...", "description": "...", "uris": ["spotify:track:..."] } ]
 --uris accepts a JSON array of URIs, a JSON array of export objects, or one URI per line.
+
+A bare filename (no "/" or leading ".") for -o/--uris/--library/apply is read from or written to
+./work/ (gitignored). Pass a path containing "/" to use a different location.
 `;
 
 const opts = {
@@ -32,8 +37,10 @@ const opts = {
   genres: { type: 'boolean', default: false },
   uris: { type: 'string' },
   library: { type: 'string' },
-  description: { type: 'string', default: '' },
+  name: { type: 'string' },
+  description: { type: 'string' },
   public: { type: 'boolean', default: false },
+  private: { type: 'boolean', default: false },
   yes: { type: 'boolean', default: false },
   'dry-run': { type: 'boolean', default: false },
   'no-open': { type: 'boolean', default: false },
@@ -42,8 +49,17 @@ const opts = {
 
 const log = (...a) => console.error(...a); // keep stdout clean for piping
 
+// Bare filenames (no "/" or leading ".") land in gitignored work/ instead of the repo root,
+// so plan/uri/export files never get committed by accident. Paths with a directory are left as-is.
+const WORK_DIR = 'work';
+function resolveWorkPath(p) {
+  if (!p || p.includes('/') || p.includes(path.sep) || p.startsWith('.')) return p;
+  fs.mkdirSync(WORK_DIR, { recursive: true, mode: 0o700 });
+  return path.join(WORK_DIR, p);
+}
+
 function readUris(file) {
-  const raw = fs.readFileSync(file, 'utf8').trim();
+  const raw = fs.readFileSync(resolveWorkPath(file), 'utf8').trim();
   if (raw.startsWith('[')) {
     return JSON.parse(raw).map((x) => (typeof x === 'string' ? x : x.uri)).filter(Boolean);
   }
@@ -51,7 +67,7 @@ function readUris(file) {
 }
 
 function emit(text, output) {
-  if (output) { fs.writeFileSync(output, text, { mode: 0o600 }); log(`Wrote ${output}`); } // 0600: personal library data
+  if (output) { const file = resolveWorkPath(output); fs.writeFileSync(file, text, { mode: 0o600 }); log(`Wrote ${file}`); } // 0600: personal library data
   else process.stdout.write(text);
 }
 
@@ -65,6 +81,13 @@ async function exportTracks(items, { genres, format, output }) {
   const tracks = items.map((i) => simplifyTrack(i, genreMap || undefined)).filter(Boolean);
   log(`${tracks.length} tracks (skipped ${items.length - tracks.length} local/episode items)`);
   emit(formatTracks(tracks, format), output);
+}
+
+async function resolvePlaylist(key) {
+  if (/^[A-Za-z0-9]{22}$/.test(key)) return key;
+  const found = (await sp.getPlaylists()).filter(Boolean).find((p) => p.name.toLowerCase() === key.toLowerCase());
+  if (!found) throw new Error(`No playlist named "${key}"`);
+  return found.id;
 }
 
 async function createOne({ name, description, uris }, { isPublic, dry }) {
@@ -127,7 +150,7 @@ async function main() {
     }
     case 'apply': {
       if (!sub) throw new Error('Usage: spotify apply plan.json');
-      const plan = JSON.parse(fs.readFileSync(sub, 'utf8'));
+      const plan = JSON.parse(fs.readFileSync(resolveWorkPath(sub), 'utf8'));
       const known = v.library ? new Set(readUris(v.library)) : null;
       const problems = validatePlan(plan, known);
       if (problems.length) throw new Error('Plan rejected:\n' + problems.join('\n'));
@@ -158,10 +181,31 @@ async function main() {
       break;
     }
     case 'add': {
-      if (!sub || !v.uris) throw new Error('Usage: spotify add <playlist-id> --uris file');
+      if (!sub || !v.uris) throw new Error('Usage: spotify add <id|name> --uris file');
       const uris = readUris(v.uris);
-      await sp.addTracks(sub, uris);
+      const id = await resolvePlaylist(sub);
+      await sp.addTracks(id, uris);
       log(`Added ${uris.length} tracks.`);
+      break;
+    }
+    case 'remove': {
+      if (!sub || !v.uris) throw new Error('Usage: spotify remove <id|name> --uris file');
+      const uris = readUris(v.uris);
+      const id = await resolvePlaylist(sub);
+      await sp.removeTracks(id, uris);
+      log(`Removed ${uris.length} tracks.`);
+      break;
+    }
+    case 'edit': {
+      if (!sub) throw new Error('Usage: spotify edit <id|name> [--name n] [--description d] [--public|--private]');
+      if (v.public && v.private) throw new Error('Pass only one of --public or --private');
+      const id = await resolvePlaylist(sub);
+      const isPublic = v.public ? true : v.private ? false : undefined;
+      if (v.name === undefined && v.description === undefined && isPublic === undefined) {
+        throw new Error('Nothing to change: pass --name, --description, and/or --public/--private');
+      }
+      await sp.updatePlaylistDetails(id, { name: v.name, description: v.description, isPublic });
+      log(`Updated "${sub}".`);
       break;
     }
     default:
