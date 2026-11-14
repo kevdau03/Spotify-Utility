@@ -19,7 +19,9 @@ const HELP = `spotify - personal Spotify CLI
 
   spotify create <name> --uris file.json [--description d] [--public] [--dry-run]
   spotify apply plan.json [--library likes.json] [--public] [--dry-run]
-  spotify add <playlist-id> --uris file.json
+  spotify add <id|name> --uris file.json
+  spotify remove <id|name> --uris file.json
+  spotify edit <id|name> [--name "New name"] [--description d] [--public|--private]
   spotify delete <id|exact name>... [--yes]   Preview by default; --yes to remove (backs up tracks first)
 
 Plan file (apply): [ { "name": "...", "description": "...", "uris": ["spotify:track:..."] } ]
@@ -32,8 +34,10 @@ const opts = {
   genres: { type: 'boolean', default: false },
   uris: { type: 'string' },
   library: { type: 'string' },
-  description: { type: 'string', default: '' },
+  name: { type: 'string' },
+  description: { type: 'string' },
   public: { type: 'boolean', default: false },
+  private: { type: 'boolean', default: false },
   yes: { type: 'boolean', default: false },
   'dry-run': { type: 'boolean', default: false },
   'no-open': { type: 'boolean', default: false },
@@ -65,6 +69,13 @@ async function exportTracks(items, { genres, format, output }) {
   const tracks = items.map((i) => simplifyTrack(i, genreMap || undefined)).filter(Boolean);
   log(`${tracks.length} tracks (skipped ${items.length - tracks.length} local/episode items)`);
   emit(formatTracks(tracks, format), output);
+}
+
+async function resolvePlaylist(key) {
+  if (/^[A-Za-z0-9]{22}$/.test(key)) return key;
+  const found = (await sp.getPlaylists()).filter(Boolean).find((p) => p.name.toLowerCase() === key.toLowerCase());
+  if (!found) throw new Error(`No playlist named "${key}"`);
+  return found.id;
 }
 
 async function createOne({ name, description, uris }, { isPublic, dry }) {
@@ -158,10 +169,31 @@ async function main() {
       break;
     }
     case 'add': {
-      if (!sub || !v.uris) throw new Error('Usage: spotify add <playlist-id> --uris file');
+      if (!sub || !v.uris) throw new Error('Usage: spotify add <id|name> --uris file');
       const uris = readUris(v.uris);
-      await sp.addTracks(sub, uris);
+      const id = await resolvePlaylist(sub);
+      await sp.addTracks(id, uris);
       log(`Added ${uris.length} tracks.`);
+      break;
+    }
+    case 'remove': {
+      if (!sub || !v.uris) throw new Error('Usage: spotify remove <id|name> --uris file');
+      const uris = readUris(v.uris);
+      const id = await resolvePlaylist(sub);
+      await sp.removeTracks(id, uris);
+      log(`Removed ${uris.length} tracks.`);
+      break;
+    }
+    case 'edit': {
+      if (!sub) throw new Error('Usage: spotify edit <id|name> [--name n] [--description d] [--public|--private]');
+      if (v.public && v.private) throw new Error('Pass only one of --public or --private');
+      const id = await resolvePlaylist(sub);
+      const isPublic = v.public ? true : v.private ? false : undefined;
+      if (v.name === undefined && v.description === undefined && isPublic === undefined) {
+        throw new Error('Nothing to change: pass --name, --description, and/or --public/--private');
+      }
+      await sp.updatePlaylistDetails(id, { name: v.name, description: v.description, isPublic });
+      log(`Updated "${sub}".`);
       break;
     }
     default:

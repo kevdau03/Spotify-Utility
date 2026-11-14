@@ -26,5 +26,5 @@ spotify apply plan.json --library likes.json
 `--library` rejects any URI not in your export, so a hallucinated track can't slip in.
 
 ## Commands
-See `spotify help`. `spotify delete <id|exact name>...` previews by default; `--yes` unfollows the playlist (Spotify's version of delete, restorable at spotify.com/account/recover-playlists) after saving a track backup to `~/.config/spotify-utility/trash/`. Ambiguous names are refused. Nothing else is ever removed, and tracks are never removed from your liked songs.
+See `spotify help`. `spotify edit <id|name> [--name n] [--description d] [--public|--private]` updates a playlist's details. `spotify add`/`spotify remove <id|name> --uris file.json` add or remove tracks (accepts the same `--uris` formats as `create`). `spotify delete <id|exact name>...` previews by default; `--yes` unfollows the playlist (Spotify's version of delete, restorable at spotify.com/account/recover-playlists) after saving a track backup to `~/.config/spotify-utility/trash/`. Ambiguous names are refused. Nothing else is ever removed, and tracks are never removed from your liked songs.
 Exports and `.env` are gitignored because they contain personal data.
